@@ -6,24 +6,34 @@ import (
 	"sync/atomic"
 )
 
-type ShardedBuffers struct {
-	w io.Writer
-	c chan uint64
-
-	cs uint64
-	sc uint64
-	ab [][]byte
-	al []sync.Mutex
+type shard struct {
+	sync.Mutex
+	b []byte
+	_pad [32]byte
 }
 
-func NewThroughShardedBuffers(w io.Writer, sc uint64) *ShardedBuffers {
+type ShardedBuffers struct {
+	w io.Writer
+	c chan uint32
+
+	cs uint32
+	sc uint32
+	sh []shard
+}
+
+func NewThroughShardedBuffers(w io.Writer, sc int) *ShardedBuffers {
+	if sc & (sc-1) != 0 {
+		panic("sc (shards count) should be power of 2")
+	}
+	if sc <= 0 || sc > 4096 {
+		panic("sc should be > 0 and <= 4096")
+	}
 	ww := &ShardedBuffers{
 		w: w,
-		c: make(chan uint64, sc),
+		c: make(chan uint32, sc),
 
-		sc: sc,
-		ab: make([][]byte, sc),
-		al: make([]sync.Mutex, sc),
+		sc: uint32(sc),
+		sh: make([]shard, sc),
 	}
 
 	go ww.writer()
@@ -32,12 +42,14 @@ func NewThroughShardedBuffers(w io.Writer, sc uint64) *ShardedBuffers {
 }
 
 func (w *ShardedBuffers) Write(buf []byte) (int, error) {
-	cn := atomic.AddUint64(&w.cs, 1) & (w.sc - 1)
+	cn := atomic.AddUint32(&w.cs, 1) & (w.sc - 1)
 
-	w.al[cn].Lock()
-	empty := len(w.ab[cn]) == 0
-	w.ab[cn] = append(w.ab[cn], buf...)
-	w.al[cn].Unlock()
+
+	sh := &w.sh[cn]
+	sh.Lock()
+	empty := len(sh.b) == 0
+	sh.b = append(sh.b, buf...)
+	sh.Unlock()
 
 	if empty {
 		w.c <- cn
@@ -53,10 +65,11 @@ func (w *ShardedBuffers) writer() {
 
 	for {
 		nc := <-w.c
+		sh := &w.sh[nc]
 
-		w.al[nc].Lock()
-		buf, w.ab[nc] = w.ab[nc], buf
-		w.al[nc].Unlock()
+		sh.Lock()
+		buf, sh.b = sh.b, buf
+		sh.Unlock()
 
 		n = 0
 		nn = 0
