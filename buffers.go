@@ -8,18 +8,18 @@ import (
 
 type ShardedBuffers struct {
 	w io.Writer
-	c chan int64
+	c chan uint64
 
-	cs int64
-	sc int64
+	cs uint64
+	sc uint64
 	ab [][]byte
 	al []sync.Mutex
 }
 
-func NewThroughShardedBuffers(w io.Writer, sc int64) *ShardedBuffers {
+func NewThroughShardedBuffers(w io.Writer, sc uint64) *ShardedBuffers {
 	ww := &ShardedBuffers{
 		w: w,
-		c: make(chan int64, sc),
+		c: make(chan uint64, sc),
 
 		sc: sc,
 		ab: make([][]byte, sc),
@@ -32,7 +32,7 @@ func NewThroughShardedBuffers(w io.Writer, sc int64) *ShardedBuffers {
 }
 
 func (w *ShardedBuffers) Write(buf []byte) (int, error) {
-	cn := atomic.AddInt64(&w.cs, 1) & (w.sc - 1)
+	cn := atomic.AddUint64(&w.cs, 1) & (w.sc - 1)
 
 	w.al[cn].Lock()
 	empty := len(w.ab[cn]) == 0
