@@ -8,8 +8,8 @@ import (
 
 type shard struct {
 	sync.Mutex
-	b []byte
-	_pad [32]byte
+	b    []byte
+	_pad [12]uintptr
 }
 
 type ShardedBuffers struct {
@@ -22,7 +22,7 @@ type ShardedBuffers struct {
 }
 
 func NewThroughShardedBuffers(w io.Writer, sc int) *ShardedBuffers {
-	if sc & (sc-1) != 0 {
+	if sc&(sc-1) != 0 {
 		panic("sc (shards count) should be power of 2")
 	}
 	if sc <= 0 || sc > 4096 {
@@ -43,7 +43,6 @@ func NewThroughShardedBuffers(w io.Writer, sc int) *ShardedBuffers {
 
 func (w *ShardedBuffers) Write(buf []byte) (int, error) {
 	cn := atomic.AddUint32(&w.cs, 1) & (w.sc - 1)
-
 
 	sh := &w.sh[cn]
 	sh.Lock()
