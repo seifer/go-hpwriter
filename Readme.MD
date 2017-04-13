@@ -1,0 +1,1 @@
+go test -bench=. -benchmem 2> /dev/null
