@@ -61,6 +61,8 @@ func (w *ShardedBuffers) writer() {
 	var err error
 	var buf []byte
 	var n, nn, att int
+	var k int
+	zipw, _ := flate.NewWriter(w.w, flate.BestSpeed)
 
 	for {
 		nc := <-w.c
@@ -76,7 +78,7 @@ func (w *ShardedBuffers) writer() {
 		err = nil
 
 		for n < len(buf) {
-			nn, err = w.w.Write(buf[n:])
+			nn, err = zipw.Write(buf[n:])
 			n += nn
 
 			if err != nil {
@@ -92,6 +94,15 @@ func (w *ShardedBuffers) writer() {
 			}
 		}
 
-		buf = buf[:0]
+		if k++; k == 127 {
+			buf = nil
+			k = 0
+			if s, ok := w.w.(interface{Sync() error}); ok {
+				zipw.Flush()
+				s.Sync()
+			}
+		} else {
+			buf = buf[:0]
+		}
 	}
 }
